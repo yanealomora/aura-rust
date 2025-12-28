@@ -1,0 +1,15 @@
+{
+  "users": {
+    "7124755718": {
+      "userId": "7124755718",
+      "username": "preapproved",
+      "firstName": "User",
+      "lastName": "",
+      "approved": true,
+      "approvedBy": "system",
+      "approvedTime": "2025-01-27T00:00:00.000Z",
+      "requestTime": "2025-01-27T00:00:00.000Z"
+    }
+  },
+  "pending": {}
+}

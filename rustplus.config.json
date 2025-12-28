@@ -1,0 +1,13 @@
+{
+  "fcm_credentials": {
+    "gcm": {
+      "androidId": "5309883929935550703",
+      "securityToken": "8764887521038219997"
+    },
+    "fcm": {
+      "token": "fIeICIvfjMk:APA91bGCHWQKbpubZTJAHfL8T10JuU0cc1EFiTxU48Q8Tp_msHTHIOuAoUQFC36cdIL_vDoPdfNZKpC_V4z0QASXF4t8sTT9pLy5_6Z6Fs2Jd7PMS7dAav0"
+    }
+  },
+  "expo_push_token": "ExponentPushToken[gwSRJeFdwOpDE2D_Qe7qfB]",
+  "rustplus_auth_token": "eyJzdGVhbUlkIjoiNzY1NjExOTk0MTQ5OTk4MjYiLCJ2ZXJzaW9uIjowLCJpc3MiOjE3NjY3NTk2NTEsImV4cCI6MTc2Nzk2OTI1MX0=.Gn/MH0dK+AggjoGwXjqz1xawTmS41eko+LE5CcKlufqzLcfHFZqFnCEnQT9KEoig7fwpA3ifSdA4kUOBEY0uBA=="
+}
