@@ -26,10 +26,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
-const PORT = process.env.WEB_TEST_PORT || 3001;
+// Railway использует PORT, локально WEB_TEST_PORT
+const PORT = process.env.PORT || process.env.WEB_TEST_PORT || 3001;
 
-// Динамический домен (обновляется при ngrok)
-let DOMAIN = process.env.WEB_TEST_DOMAIN || `http://localhost:${PORT}`;
+// Домен - Railway даёт RAILWAY_PUBLIC_DOMAIN
+let DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN 
+  ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+  : process.env.WEB_TEST_DOMAIN || `http://localhost:${PORT}`;
 
 // История событий
 const eventsHistory = [];
@@ -377,19 +380,27 @@ class WebTestServer {
     server.listen(PORT, async () => {
       console.log(`[WebTest] http://localhost:${PORT}`);
       
-      // Cloudflare Tunnel или ngrok для постоянного домена
-      if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
+      // Railway - уже есть публичный домен
+      if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+        DOMAIN = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+        setupSteamStrategy(DOMAIN);
+        console.log(`[WebTest] Railway: ${DOMAIN}`);
+      }
+      // Cloudflare Tunnel
+      else if (process.env.CLOUDFLARE_TUNNEL_TOKEN) {
         DOMAIN = process.env.WEB_TEST_DOMAIN || `http://localhost:${PORT}`;
         setupSteamStrategy(DOMAIN);
         console.log(`[WebTest] Cloudflare Tunnel: ${DOMAIN}`);
-      } else if (process.env.NGROK_AUTH_TOKEN) {
+      }
+      // ngrok для локальной разработки
+      else if (process.env.NGROK_AUTH_TOKEN) {
         await this.setupNgrok();
-      } else {
-        // Local only - настраиваем Steam auth для localhost
+      }
+      // Local only
+      else {
         DOMAIN = `http://localhost:${PORT}`;
         setupSteamStrategy(DOMAIN);
         console.log(`[WebTest] Local only: ${DOMAIN}`);
-        console.log(`[WebTest] Set NGROK_AUTH_TOKEN for public access with Steam auth`);
       }
     });
     
@@ -402,18 +413,14 @@ class WebTestServer {
       const url = await ngrok.default.connect({
         addr: PORT,
         authtoken: process.env.NGROK_AUTH_TOKEN
-        // Без subdomain - динамический URL
       });
       
-      // Обновляем домен и настраиваем Steam auth
       DOMAIN = url;
       setupSteamStrategy(DOMAIN);
       
       console.log(`[WebTest] ngrok: ${url}`);
-      console.log(`[WebTest] Steam auth ready!`);
     } catch (e) {
       console.log(`[WebTest] ngrok error: ${e.message}`);
-      // Fallback на localhost
       DOMAIN = `http://localhost:${PORT}`;
       setupSteamStrategy(DOMAIN);
     }
