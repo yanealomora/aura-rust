@@ -1,5 +1,5 @@
 {
-  "name": "rust-event-bot",
+  "name": "aura-rust",
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.js",
@@ -7,23 +7,17 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "connect": "node scripts/connect.js",
+    "setup": "node scripts/launcher.js",
+    "sales": "node sell/SalesBot.js",
     "listen": "npx @liamcottle/rustplus.js fcm-listen",
     "postinstall": "node scripts/patch-proto.js"
   },
   "dependencies": {
     "@liamcottle/push-receiver": "^0.0.4",
     "@liamcottle/rustplus.js": "^2.5.0",
-    "cors": "^2.8.5",
     "discord.js": "^14.25.1",
     "dotenv": "^16.3.1",
-    "express": "^5.2.1",
-    "express-session": "^1.18.2",
-    "localtunnel": "^2.0.2",
-    "ngrok": "^5.0.0-beta.2",
     "node-telegram-bot-api": "^0.64.0",
-    "passport": "^0.7.0",
-    "passport-steam": "^1.0.18",
-    "socket.io": "^4.8.3",
     "telegraf": "^4.16.3"
   }
 }

@@ -17,6 +17,9 @@ const DEFAULT_SETTINGS = {
     crate: true,
     raidAlert: true,
     smartAlarm: true,
+    shops: true,
+    shopSales: false,
+    shopWater: true,
   },
   teamChat: {
     enabled: true,

@@ -9,6 +9,8 @@ import deviceManager, { DEVICE_TYPES } from '../services/DeviceManager.js';
 import { STRUCTURES, CATEGORIES, getDestroyInfo } from '../data/RaidData.js';
 import { getItemName } from '../data/ItemDatabase.js';
 import { getCraftInfo, getRecycleInfo, getResearchInfo, getDecayInfo, getUpkeepInfo, getCCTVCodes, getDespawnInfo, formatIngredients, formatOutput } from '../data/RustLabsData.js';
+import licenseManager from '../core/LicenseManager.js';
+import adminBot from '../admin/AdminBot.js';
 import accessControl from '../core/AccessControl.js';
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
@@ -22,83 +24,101 @@ bot.use(async (ctx, next) => {
   const username = ctx.from?.username;
   const firstName = ctx.from?.first_name;
   
-  // Админ всегда проходит
-  if (accessControl.isAdmin(userId)) {
-    accessControl.logUsage(userId, username, ctx.message?.text || ctx.callbackQuery?.data || 'unknown');
+  // Владелец всегда проходит
+  if (licenseManager.isOwner(userId)) {
     return next();
   }
   
-  // Проверка доступа (передаём username для проверки белого списка)
-  if (!accessControl.hasAccess(userId, username)) {
-    // Если это команда /start - обрабатываем запрос доступа
+  // Проверка лицензии
+  const license = licenseManager.check(userId);
+  
+  if (!license.valid) {
+    // Если /start - показываем запрос доступа
     if (ctx.message?.text === '/start') {
-      const result = accessControl.requestAccess(userId, username, firstName, ctx.from?.last_name);
+      // Отправляем запрос владельцу
+      adminBot.sendAccessRequest(userId, username, firstName);
       
-      if (result.status === 'already_approved') {
-        return next();
-      } else if (result.status === 'pending') {
-        return ctx.reply('⏳ Ваш запрос на доступ ожидает одобрения администратора');
-      } else if (result.status === 'requested') {
-        // Уведомляем админа
-        const adminId = process.env.TELEGRAM_ADMIN_ID;
-        if (adminId) {
-          const adminText = `🔔 НОВЫЙ ЗАПРОС ДОСТУПА\n\n👤 ${firstName || 'Нет имени'}\n🆔 @${username || 'нет'}\nID: ${userId}\n\nОдобрить?`;
-          const adminBtns = {
-            inline_keyboard: [
-              [
-                { text: '✅ Одобрить', callback_data: `approve_${userId}` },
-                { text: '❌ Отклонить', callback_data: `reject_${userId}` }
-              ]
-            ]
-          };
-          try {
-            await bot.telegram.sendMessage(adminId, adminText, { reply_markup: adminBtns });
-          } catch (e) {
-            console.error('[Access] Admin notify error:', e.message);
-          }
-        }
-        return ctx.reply('📝 Запрос на доступ отправлен администратору. Ожидайте одобрения.');
-      }
+      return ctx.reply(`AURA RUST
+
+Для использования бота нужна лицензия.
+Ваш запрос отправлен администратору.
+
+ID: ${userId}`);
     }
     
-    return ctx.reply('🚫 У вас нет доступа к боту. Отправьте /start для запроса доступа.');
+    if (license.reason === 'expired') {
+      return ctx.reply(`Лицензия истекла
+
+Для продления обратитесь к администратору.
+ID: ${userId}`);
+    }
+    
+    if (license.reason === 'blocked') {
+      return ctx.reply('Доступ заблокирован');
+    }
+    
+    return ctx.reply(`Нет лицензии
+
+Отправьте /start для запроса доступа.
+ID: ${userId}`);
   }
   
-  // Логируем использование
-  accessControl.logUsage(userId, username, ctx.message?.text || ctx.callbackQuery?.data || 'unknown');
   return next();
 });
 
 // ═══════════════════ АДМИН КОМАНДЫ ═══════════════════
 bot.command('admin', async (ctx) => {
-  if (!accessControl.isAdmin(ctx.from.id)) return ctx.reply('🚫 Только для админа');
+  if (!licenseManager.isOwner(ctx.from.id)) return ctx.reply('Только для владельца');
   
-  const stats = accessControl.getStats();
-  const pending = accessControl.getPendingRequests();
+  const stats = licenseManager.getStats();
   
-  let text = `👑 АДМИН ПАНЕЛЬ\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-  text += `📊 Статистика:\n`;
-  text += `✅ Одобрено: ${stats.approved}\n`;
-  text += `⏳ Ожидает: ${stats.pending}\n`;
-  text += `🚫 Заблокировано: ${stats.blocked}\n`;
-  text += `👥 Всего: ${stats.total}\n\n`;
-  
-  if (pending.length) {
-    text += `⏳ Ожидающие запросы:\n`;
-    pending.slice(0, 5).forEach((req, i) => {
-      text += `${i + 1}. ${req.firstName} (@${req.username})\n`;
-    });
-  }
+  let text = `АДМИН ПАНЕЛЬ\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+  text += `Статистика:\n`;
+  text += `Активных: ${stats.active}\n`;
+  text += `Истекших: ${stats.expired}\n`;
+  text += `Заблокированных: ${stats.blocked}\n`;
+  text += `Lifetime: ${stats.lifetime}\n`;
+  text += `Всего: ${stats.total}`;
   
   const btns = {
     inline_keyboard: [
-      [{ text: '👥 Пользователи', callback_data: 'admin_users' }],
-      [{ text: '📋 Запросы', callback_data: 'admin_requests' }],
-      [{ text: '📊 Логи', callback_data: 'admin_logs' }]
+      [{ text: 'Пользователи', callback_data: 'admin_users' }],
+      [{ text: 'Выдать лицензию', callback_data: 'admin_grant' }]
     ]
   };
   
   await ctx.reply(text, { reply_markup: btns });
+});
+
+// Команда для выдачи лицензии
+bot.command('grant', async (ctx) => {
+  if (!licenseManager.isOwner(ctx.from.id)) return ctx.reply('Только для владельца');
+  
+  const args = ctx.message.text.split(' ').slice(1);
+  if (args.length < 1) return ctx.reply('Использование: /grant ID [тип]\nТипы: FREE, WEEK, MONTH, LIFETIME');
+  
+  const userId = args[0];
+  const type = (args[1] || 'MONTH').toUpperCase();
+  
+  const result = licenseManager.grant(userId, type, ctx.from.id.toString());
+  
+  if (result.success) {
+    const days = result.daysLeft === -1 ? 'навсегда' : `${result.daysLeft} дней`;
+    ctx.reply(`Лицензия выдана\n\nID: ${userId}\nТип: ${type}\nСрок: ${days}`);
+  } else {
+    ctx.reply(`Ошибка: ${result.error}`);
+  }
+});
+
+// Команда для отзыва
+bot.command('revoke', async (ctx) => {
+  if (!licenseManager.isOwner(ctx.from.id)) return ctx.reply('Только для владельца');
+  
+  const userId = ctx.message.text.split(' ')[1];
+  if (!userId) return ctx.reply('Использование: /revoke ID');
+  
+  const result = licenseManager.revoke(userId, ctx.from.id.toString());
+  ctx.reply(result.success ? `Лицензия ${userId} отозвана` : `Ошибка: ${result.error}`);
 });
 
 // ═══════════════════ ГЛАВНОЕ МЕНЮ ═══════════════════
@@ -130,6 +150,50 @@ bot.command('start', async (ctx) => {
 });
 
 bot.command('menu', ctx => ctx.reply('📋 Меню', { reply_markup: MAIN_MENU }));
+
+// Помощь
+bot.command('help', async ctx => {
+  let text = '📖 КОМАНДЫ\n━━━━━━━━━━━━━━━━━━━━\n\n';
+  text += '🎮 ОСНОВНЫЕ\n';
+  text += '/start — Главное меню\n';
+  text += '/team — Команда\n';
+  text += '/events — События\n';
+  text += '/time — Время\n';
+  text += '/map — Карта\n';
+  text += '/shops — Магазины\n';
+  text += '/search предмет — Поиск в магазинах\n';
+  text += '/devices — Устройства\n';
+  text += '/settings — Настройки\n\n';
+  
+  text += '💬 ЧАТ\n';
+  text += '/say сообщение — В игровой чат\n';
+  text += '/swap ник — Передать лидерку\n\n';
+  
+  text += '💣 РЕЙД\n';
+  text += '/raid — Калькулятор\n';
+  text += '/raid предмет — Инфо о предмете\n\n';
+  
+  text += '📚 RUSTLABS\n';
+  text += '/craft предмет — Крафт\n';
+  text += '/recycle предмет — Ресайкл\n';
+  text += '/research предмет — Изучение\n';
+  text += '/decay тип — Декей\n';
+  text += '/upkeep тип — Апкип\n';
+  text += '/despawn предмет — Деспавн\n';
+  text += '/cctv монумент — Коды камер\n\n';
+  
+  text += '🔍 ЧЕКЕР\n';
+  text += 'Просто отправь SteamID, ник или ссылку\n\n';
+  
+  text += '📷 КАМЕРЫ\n';
+  text += '/cam КОД — Скриншот камеры\n\n';
+  
+  text += '🔇 МЬЮТ\n';
+  text += '/mute [минуты] — Выкл уведомления\n';
+  text += '/unmute — Вкл уведомления';
+  
+  await ctx.reply(text);
+});
 
 // Отправка в игровой чат
 bot.command('say', async ctx => {
@@ -441,6 +505,33 @@ bot.command('removedevice', ctx => ctx.reply(deviceManager.remove(ctx.message.te
 bot.command('on', async ctx => { const q = ctx.message.text.split(' ').slice(1).join(' '); const d = /^\d+$/.test(q) ? deviceManager.get(q) : deviceManager.findByName(q); if (!d) return ctx.reply('❌'); ctx.reply((await deviceManager.turnOn(d.id)).success ? `🟢 ${d.name}` : '❌'); });
 bot.command('off', async ctx => { const q = ctx.message.text.split(' ').slice(1).join(' '); const d = /^\d+$/.test(q) ? deviceManager.get(q) : deviceManager.findByName(q); if (!d) return ctx.reply('❌'); ctx.reply((await deviceManager.turnOff(d.id)).success ? `🔴 ${d.name}` : '❌'); });
 
+// ═══════════════════ ЧЕКЕР ═══════════════════
+bot.command('check', async ctx => {
+  const query = ctx.message.text.split(' ').slice(1).join(' ');
+  if (!query) return ctx.reply('🔍 /check ник/steamid/ссылка');
+  
+  // Извлекаем SteamID из ссылки
+  let q = query;
+  const steamMatch = q.match(/steamcommunity\.com\/(?:profiles|id)\/([^\s\/]+)/i);
+  if (steamMatch) q = steamMatch[1];
+  
+  await ctx.reply('🔍 Поиск...');
+  
+  // Если это SteamID
+  if (/^\d{17}$/.test(q)) {
+    return searchSteam(ctx, q);
+  }
+  
+  // Пробуем как vanity URL
+  const resolved = await steamService.resolveVanityUrl(q);
+  if (resolved) {
+    return searchSteam(ctx, resolved);
+  }
+  
+  // Поиск по нику
+  return searchByName(ctx, q);
+});
+
 // ═══════════════════ КАМЕРЫ ═══════════════════
 bot.command('cam', async ctx => {
   const code = ctx.message.text.split(' ')[1]?.toUpperCase();
@@ -478,14 +569,18 @@ async function showSettings(ctx, edit = false) {
   text += `🔴 Выходы: ${n.offline ? '✅' : '❌'}\n`;
   text += `🚢 Cargo: ${n.cargo ? '✅' : '❌'}\n`;
   text += `🚁 Патрульный: ${n.heli ? '✅' : '❌'}\n`;
+  text += `🛩 Chinook: ${n.chinook ? '✅' : '❌'}\n`;
+  text += `📦 Crates: ${n.crate ? '✅' : '❌'}\n`;
   text += `🏪 Магазины: ${n.shops ? '✅' : '❌'}\n`;
   text += `💰 Продажи: ${n.shopSales ? '✅' : '❌'}\n`;
+  text += `🌊 Магаз в воде: ${n.shopWater ? '✅' : '❌'}\n`;
   text += `🚨 Raid Alert: ${n.raidAlert ? '✅' : '❌'}`;
   
   const kb = { inline_keyboard: [
     [{ text: `💀${n.deaths ? '✅' : '❌'}`, callback_data: 'set_deaths' }, { text: `🟢${n.online ? '✅' : '❌'}`, callback_data: 'set_online' }, { text: `🔴${n.offline ? '✅' : '❌'}`, callback_data: 'set_offline' }],
-    [{ text: `🚢${n.cargo ? '✅' : '❌'}`, callback_data: 'set_cargo' }, { text: `🚁${n.heli ? '✅' : '❌'}`, callback_data: 'set_heli' }, { text: `📦${n.crate ? '✅' : '❌'}`, callback_data: 'set_crate' }],
-    [{ text: `🏪${n.shops ? '✅' : '❌'}`, callback_data: 'set_shops' }, { text: `💰${n.shopSales ? '✅' : '❌'}`, callback_data: 'set_shopSales' }, { text: `🚨${n.raidAlert ? '✅' : '❌'}`, callback_data: 'set_raidAlert' }],
+    [{ text: `🚢${n.cargo ? '✅' : '❌'}`, callback_data: 'set_cargo' }, { text: `🚁${n.heli ? '✅' : '❌'}`, callback_data: 'set_heli' }, { text: `🛩${n.chinook ? '✅' : '❌'}`, callback_data: 'set_chinook' }],
+    [{ text: `📦${n.crate ? '✅' : '❌'}`, callback_data: 'set_crate' }, { text: `🏪${n.shops ? '✅' : '❌'}`, callback_data: 'set_shops' }, { text: `💰${n.shopSales ? '✅' : '❌'}`, callback_data: 'set_shopSales' }],
+    [{ text: `🌊${n.shopWater ? '✅' : '❌'}`, callback_data: 'set_shopWater' }, { text: `🚨${n.raidAlert ? '✅' : '❌'}`, callback_data: 'set_raidAlert' }],
     [{ text: muted ? '🔊 Вкл' : '🔇 Выкл', callback_data: 'set_mute' }],
     [{ text: '◀️', callback_data: 'menu_main' }]
   ]};
@@ -964,6 +1059,7 @@ function subscribe() {
   });
   
   eventBus.on(EVENTS.SHOP_WATER, d => {
+    if (!settings.get('notifications.shopWater')) return;
     send(`⚠️ МАГАЗИН В ВОДЕ\n📍 ${d.grid}\n${d.name || 'Vending Machine'}`);
   });
   

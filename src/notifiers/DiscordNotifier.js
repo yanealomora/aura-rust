@@ -573,8 +573,9 @@ async function sendSettings(ch, upd = null) {
     .setDescription(muted ? '🔇 **Уведомления ВЫКЛ**' : '🔊 **Уведомления ВКЛ**')
     .addFields(
       { name: 'Игроки', value: `${n.deaths ? '✅' : '❌'} Смерти\n${n.online ? '✅' : '❌'} Входы\n${n.offline ? '✅' : '❌'} Выходы`, inline: true },
-      { name: 'События', value: `${n.cargo ? '✅' : '❌'} Cargo\n${n.heli ? '✅' : '❌'} Heli\n${n.crate ? '✅' : '❌'} Crates`, inline: true },
-      { name: 'Другое', value: `${n.shops ? '✅' : '❌'} Магазины\n${n.raidAlert ? '✅' : '❌'} Raid Alert`, inline: true }
+      { name: 'События', value: `${n.cargo ? '✅' : '❌'} Cargo\n${n.heli ? '✅' : '❌'} Heli\n${n.chinook ? '✅' : '❌'} Chinook\n${n.crate ? '✅' : '❌'} Crates`, inline: true },
+      { name: 'Магазины', value: `${n.shops ? '✅' : '❌'} Новые\n${n.shopSales ? '✅' : '❌'} Продажи\n${n.shopWater ? '✅' : '❌'} В воде`, inline: true },
+      { name: 'Другое', value: `${n.raidAlert ? '✅' : '❌'} Raid Alert`, inline: true }
     )
     .setTimestamp();
   
@@ -586,11 +587,14 @@ async function sendSettings(ch, upd = null) {
     new ButtonBuilder().setCustomId('set_heli').setLabel('🚁').setStyle(n.heli ? ButtonStyle.Success : ButtonStyle.Secondary)
   );
   const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('set_chinook').setLabel('🛩️').setStyle(n.chinook ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('set_crate').setLabel('📦').setStyle(n.crate ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('set_shops').setLabel('🏪').setStyle(n.shops ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('set_raidAlert').setLabel('🚨').setStyle(n.raidAlert ? ButtonStyle.Success : ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('set_shopSales').setLabel('💰').setStyle(n.shopSales ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('set_shopWater').setLabel('🌊').setStyle(n.shopWater ? ButtonStyle.Success : ButtonStyle.Secondary)
   );
   const row3 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('set_raidAlert').setLabel('🚨').setStyle(n.raidAlert ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('set_mute').setLabel(muted ? '🔊 Включить' : '🔇 Выключить').setStyle(muted ? ButtonStyle.Success : ButtonStyle.Danger),
     new ButtonBuilder().setCustomId('menu_main').setLabel('◀️ Меню').setStyle(ButtonStyle.Secondary)
   );
@@ -673,6 +677,24 @@ client.on('messageCreate', async (msg) => {
       case 'shops': await sendShops(ch); break;
       case 'devices': await sendDevices(ch); break;
       case 'settings': await sendSettings(ch); break;
+      
+      case 'help': {
+        const embed = new EmbedBuilder()
+          .setTitle('📖 Команды')
+          .setColor(C.blue)
+          .addFields(
+            { name: '🎮 Основные', value: '`!start` `!team` `!events` `!time` `!map` `!shops` `!devices` `!settings`', inline: false },
+            { name: '💬 Чат', value: '`!say сообщение` — В игровой чат\n`!swap ник` — Передать лидерку', inline: false },
+            { name: '💣 Рейд', value: '`!raid` — Калькулятор\n`!raid предмет` — Инфо', inline: true },
+            { name: '📚 RustLabs', value: '`!craft` `!recycle` `!research`', inline: true },
+            { name: '🔍 Чекер', value: '`!check ник/steamid`\n`!bm ник` — BattleMetrics', inline: false },
+            { name: '📷 Камеры', value: '`!cam КОД`', inline: true },
+            { name: '🔇 Мьют', value: '`!mute` `!unmute`', inline: true }
+          )
+          .setTimestamp();
+        await ch.send({ embeds: [embed] });
+        break;
+      }
       
       case 'say': {
         const m = args.join(' ');
@@ -1157,6 +1179,7 @@ function subscribe() {
   });
   
   eventBus.on(EVENTS.SHOP_WATER, d => {
+    if (!settings.get('notifications.shopWater')) return;
     const embed = new EmbedBuilder()
       .setTitle('⚠️ МАГАЗИН В ВОДЕ')
       .setDescription(`**${d.name || 'Vending Machine'}**\nКоординаты: \`${d.grid}\``)
@@ -1180,7 +1203,7 @@ class DiscordNotifier {
     console.log('[Discord] ═══════════════════════════════════════');
     subscribe();
     
-    client.once('ready', () => console.log(`[Discord] ✅ ${client.user.tag}`));
+    client.once('clientReady', () => console.log(`[Discord] ${client.user.tag}`));
     client.login(process.env.DISCORD_BOT_TOKEN).catch(e => console.error('[Discord] ❌', e.message));
     console.log('[Discord] ═══════════════════════════════════════');
   }
